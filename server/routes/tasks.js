@@ -56,7 +56,7 @@ router.post('/:id/start', (req, res) => {
     return res.status(400).json({ error: '只有 pending/failed 状态的任务可以启动' });
   }
 
-  db.prepare('UPDATE tasks SET status = ?, progress = 0, error = NULL, log = "" WHERE id = ?')
+  db.prepare("UPDATE tasks SET status = ?, progress = 0, error = NULL, log = '' WHERE id = ?")
     .run('generating_prompts', req.params.id);
 
   startPipeline(req.params.id);
@@ -66,7 +66,7 @@ router.post('/:id/start', (req, res) => {
 router.post('/:id/abort', (req, res) => {
   abortPipeline(req.params.id);
   const db = getDB();
-  db.prepare('UPDATE tasks SET status = "failed", error = "用户手动终止" WHERE id = ?').run(req.params.id);
+  db.prepare("UPDATE tasks SET status = 'failed', error = '用户手动终止' WHERE id = ?").run(req.params.id);
   res.json({ message: '任务已终止' });
 });
 

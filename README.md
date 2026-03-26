@@ -62,7 +62,7 @@ cp .env.example .env
 npm run dev
 
 # 或分别启动
-npm run dev:server  # 后端 http://localhost:3015
+npm run dev:server  # 后端 http://localhost:3000
 npm run dev:client  # 前端 http://localhost:5173
 ```
 

@@ -87,7 +87,7 @@ async function startPipeline(taskId) {
       try {
         await generateImage(record.prompt, imgPath);
         record.image_path = imgPath;
-        db.prepare('UPDATE task_images SET image_path = ?, status = "generated" WHERE id = ?')
+        db.prepare("UPDATE task_images SET image_path = ?, status = 'generated' WHERE id = ?")
           .run(imgPath, record.id);
 
         const progress = 15 + Math.floor((i + 1) / imageRecords.length * 30);
@@ -95,7 +95,7 @@ async function startPipeline(taskId) {
         appendLog(taskId, `🖼️ [${i + 1}/${imageRecords.length}] 图片生成完成`);
       } catch (err) {
         appendLog(taskId, `⚠️ [${i + 1}/${imageRecords.length}] 图片生成失败: ${err.message}`);
-        db.prepare('UPDATE task_images SET status = "failed" WHERE id = ?').run(record.id);
+        db.prepare("UPDATE task_images SET status = 'failed' WHERE id = ?").run(record.id);
       }
 
       if (i < imageRecords.length - 1) {
@@ -121,7 +121,7 @@ async function startPipeline(taskId) {
         fs.writeFileSync(labelPath, labelContent);
         record.label_path = labelPath;
 
-        db.prepare('UPDATE task_images SET label_path = ?, status = "labeled" WHERE id = ?')
+        db.prepare("UPDATE task_images SET label_path = ?, status = 'labeled' WHERE id = ?")
           .run(labelPath, record.id);
 
         const progress = 50 + Math.floor((i + 1) / generatedImages.length * 20);
@@ -141,7 +141,7 @@ async function startPipeline(taskId) {
     appendLog(taskId, '🏗️ Step 4/5: 正在构建YOLO数据集并开始训练...');
 
     const labeledImages = db.prepare(
-      'SELECT * FROM task_images WHERE task_id = ? AND status = "labeled"'
+      "SELECT * FROM task_images WHERE task_id = ? AND status = 'labeled'"
     ).all(taskId);
 
     if (labeledImages.length < 2) {
