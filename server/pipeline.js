@@ -9,7 +9,9 @@ const { labelImage } = require('./services/vision');
 const { buildDatasetStructure, trainYOLO } = require('./services/yolo');
 
 const CONCURRENCY_IMAGE = 5;
-const CONCURRENCY_LABEL = 5;
+const CONCURRENCY_LABEL = 2;
+const MAX_RETRIES = 3;
+const RETRY_BASE_DELAY = 3000;
 
 const activePipelines = new Map();
 
@@ -38,20 +40,40 @@ function isAborted(taskId) {
   return !activePipelines.has(taskId);
 }
 
-async function runParallel(items, concurrency, fn) {
-  const results = [];
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function withRetry(fn, retries = MAX_RETRIES) {
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err) {
+      if (attempt === retries) throw err;
+      const delay = RETRY_BASE_DELAY * Math.pow(2, attempt - 1);
+      await sleep(delay);
+    }
+  }
+}
+
+async function runParallel(items, concurrency, taskId, fn) {
   let index = 0;
+  let aborted = false;
 
   async function worker() {
-    while (index < items.length) {
+    while (!aborted) {
       const i = index++;
-      results[i] = await fn(items[i], i).catch(err => ({ error: err }));
+      if (i >= items.length) break;
+      if (isAborted(taskId)) { aborted = true; break; }
+      await fn(items[i], i);
     }
   }
 
-  const workers = Array.from({ length: Math.min(concurrency, items.length) }, () => worker());
+  const workers = Array.from(
+    { length: Math.min(concurrency, items.length) },
+    () => worker()
+  );
   await Promise.all(workers);
-  return results;
 }
 
 async function startPipeline(taskId) {
@@ -61,29 +83,45 @@ async function startPipeline(taskId) {
     const db = getDB();
     const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(taskId);
     const classes = JSON.parse(task.classes);
+    const targetCount = task.image_count;
 
-    const existingImages = db.prepare(
+    let existingImages = db.prepare(
       'SELECT * FROM task_images WHERE task_id = ? ORDER BY created_at'
     ).all(taskId);
 
-    const hasExistingData = existingImages.length > 0;
+    // 如果记录数超过目标数(历史重复)，只保留前 targetCount 条
+    if (existingImages.length > targetCount) {
+      const toKeep = existingImages.slice(0, targetCount);
+      const toRemove = existingImages.slice(targetCount);
+      const keepIds = new Set(toKeep.map(r => r.id));
+      const removeStmt = db.prepare('DELETE FROM task_images WHERE id = ?');
+      db.transaction(() => {
+        for (const r of toRemove) {
+          removeStmt.run(r.id);
+        }
+      })();
+      existingImages = toKeep;
+      appendLog(taskId, `🧹 清理了 ${toRemove.length} 条重复记录，保留 ${toKeep.length} 条`);
+    }
 
-    appendLog(taskId, `🚀 流水线${hasExistingData ? '恢复' : '启动'} | 类别: ${classes.join(', ')} | 图片数: ${task.image_count}`);
+    const hasExistingData = existingImages.length > 0;
+    appendLog(taskId, `🚀 流水线${hasExistingData ? '恢复' : '启动'} | 类别: ${classes.join(', ')} | 目标: ${targetCount} 张`);
 
     // ============================================================
-    // Step 1: 生成提示词（如果已有记录则跳过）
+    // Step 1: 生成提示词
     // ============================================================
     let imageRecords;
 
     if (hasExistingData) {
       imageRecords = existingImages;
-      const doneCount = existingImages.filter(r => r.status !== 'pending' && r.status !== 'failed').length;
-      appendLog(taskId, `📝 Step 1/5: 已有 ${existingImages.length} 条记录 (${doneCount} 条已完成)，跳过提示词生成`);
+      const labeled = existingImages.filter(r => r.label_path && fs.existsSync(r.label_path)).length;
+      const generated = existingImages.filter(r => r.image_path && fs.existsSync(r.image_path)).length;
+      appendLog(taskId, `📝 Step 1: 复用已有 ${existingImages.length} 条记录 (${generated} 张图片, ${labeled} 条标注)`);
     } else {
       updateTask(taskId, { status: 'generating_prompts', progress: 5 });
-      appendLog(taskId, '📝 Step 1/5: 正在使用LLM生成生图提示词...');
+      appendLog(taskId, '📝 Step 1: 正在生成提示词...');
 
-      const prompts = await generatePrompts(task.description, classes, task.image_count);
+      const prompts = await withRetry(() => generatePrompts(task.description, classes, targetCount));
       appendLog(taskId, `✅ 已生成 ${prompts.length} 个提示词`);
 
       if (isAborted(taskId)) return;
@@ -110,78 +148,70 @@ async function startPipeline(taskId) {
     if (isAborted(taskId)) return;
 
     // ============================================================
-    // Step 2: 并行生成图片（跳过已生成的）
+    // Step 2: 并行生成图片
     // ============================================================
     const needGenerate = imageRecords.filter(r => !r.image_path || !fs.existsSync(r.image_path));
     const alreadyGenerated = imageRecords.length - needGenerate.length;
+    const total = imageRecords.length;
 
     updateTask(taskId, { status: 'generating_images', progress: 15 });
 
     if (needGenerate.length === 0) {
-      appendLog(taskId, `🎨 Step 2/5: 全部 ${imageRecords.length} 张图片已存在，跳过生图`);
+      appendLog(taskId, `🎨 Step 2: 全部 ${total} 张图片已存在，跳过`);
     } else {
-      appendLog(taskId, `🎨 Step 2/5: 需生成 ${needGenerate.length} 张图片 (已有 ${alreadyGenerated} 张)，并发 ${CONCURRENCY_IMAGE}...`);
-
+      appendLog(taskId, `🎨 Step 2: 生成图片 ${needGenerate.length}/${total} (并发 ${CONCURRENCY_IMAGE})...`);
       const imgDir = path.join(__dirname, '..', 'data', 'images', taskId);
       fs.mkdirSync(imgDir, { recursive: true });
 
       let doneCount = alreadyGenerated;
-      const total = imageRecords.length;
+      let failCount = 0;
 
-      await runParallel(needGenerate, CONCURRENCY_IMAGE, async (record, _i) => {
-        if (isAborted(taskId)) return;
-
+      await runParallel(needGenerate, CONCURRENCY_IMAGE, taskId, async (record) => {
         const imgPath = path.join(imgDir, `${record.id}.png`);
         try {
-          await generateImage(record.prompt, imgPath);
+          await withRetry(() => generateImage(record.prompt, imgPath));
           record.image_path = imgPath;
           record.status = 'generated';
           db.prepare("UPDATE task_images SET image_path = ?, status = 'generated' WHERE id = ?")
             .run(imgPath, record.id);
           doneCount++;
-          const progress = 15 + Math.floor(doneCount / total * 30);
-          updateTask(taskId, { progress });
+          updateTask(taskId, { progress: 15 + Math.floor(doneCount / total * 30) });
           appendLog(taskId, `🖼️ [${doneCount}/${total}] 图片生成完成`);
         } catch (err) {
-          record.status = 'failed';
+          failCount++;
           db.prepare("UPDATE task_images SET status = 'failed' WHERE id = ?").run(record.id);
-          doneCount++;
-          appendLog(taskId, `⚠️ [${doneCount}/${total}] 图片生成失败: ${err.message}`);
+          appendLog(taskId, `⚠️ 图片生成失败(已重试${MAX_RETRIES}次): ${err.message}`);
         }
       });
+
+      appendLog(taskId, `🎨 生图完成: 成功 ${doneCount}/${total}, 失败 ${failCount}`);
     }
 
     if (isAborted(taskId)) return;
 
     // ============================================================
-    // Step 3: 并行视觉标注（跳过已标注的）
+    // Step 3: 并行视觉标注 (低并发 + 重试)
     // ============================================================
-    const allGenerated = imageRecords.filter(r =>
-      r.image_path && fs.existsSync(r.image_path)
-    );
-    const needLabel = allGenerated.filter(r =>
-      !r.label_path || !fs.existsSync(r.label_path)
-    );
+    const allGenerated = imageRecords.filter(r => r.image_path && fs.existsSync(r.image_path));
+    const needLabel = allGenerated.filter(r => !r.label_path || !fs.existsSync(r.label_path));
     const alreadyLabeled = allGenerated.length - needLabel.length;
 
     updateTask(taskId, { status: 'labeling', progress: 50 });
 
     if (needLabel.length === 0) {
-      appendLog(taskId, `🏷️ Step 3/5: 全部 ${allGenerated.length} 张图片已标注，跳过标注`);
+      appendLog(taskId, `🏷️ Step 3: 全部 ${allGenerated.length} 张已标注，跳过`);
     } else {
-      appendLog(taskId, `🏷️ Step 3/5: 需标注 ${needLabel.length} 张图片 (已有 ${alreadyLabeled} 张)，并发 ${CONCURRENCY_LABEL}...`);
-
+      appendLog(taskId, `🏷️ Step 3: 标注 ${needLabel.length}/${allGenerated.length} 张 (并发 ${CONCURRENCY_LABEL}, 自动重试)...`);
       const labelDir = path.join(__dirname, '..', 'data', 'labels', taskId);
       fs.mkdirSync(labelDir, { recursive: true });
 
       let doneCount = alreadyLabeled;
-      const total = allGenerated.length;
+      let failCount = 0;
+      const labelTotal = allGenerated.length;
 
-      await runParallel(needLabel, CONCURRENCY_LABEL, async (record, _i) => {
-        if (isAborted(taskId)) return;
-
+      await runParallel(needLabel, CONCURRENCY_LABEL, taskId, async (record) => {
         try {
-          const labelContent = await labelImage(record.image_path, classes);
+          const labelContent = await withRetry(() => labelImage(record.image_path, classes));
           const labelPath = path.join(labelDir, `${record.id}.txt`);
           fs.writeFileSync(labelPath, labelContent);
           record.label_path = labelPath;
@@ -189,14 +219,17 @@ async function startPipeline(taskId) {
           db.prepare("UPDATE task_images SET label_path = ?, status = 'labeled' WHERE id = ?")
             .run(labelPath, record.id);
           doneCount++;
-          const progress = 50 + Math.floor(doneCount / total * 20);
-          updateTask(taskId, { progress });
-          appendLog(taskId, `🏷️ [${doneCount}/${total}] 标注完成`);
+          updateTask(taskId, { progress: 50 + Math.floor(doneCount / labelTotal * 20) });
+          appendLog(taskId, `🏷️ [${doneCount}/${labelTotal}] 标注完成`);
         } catch (err) {
-          doneCount++;
-          appendLog(taskId, `⚠️ [${doneCount}/${total}] 标注失败: ${err.message}`);
+          failCount++;
+          appendLog(taskId, `⚠️ 标注失败(已重试${MAX_RETRIES}次): ${err.message}`);
         }
+
+        await sleep(1000);
       });
+
+      appendLog(taskId, `🏷️ 标注完成: 成功 ${doneCount}/${labelTotal}, 失败 ${failCount}`);
     }
 
     if (isAborted(taskId)) return;
@@ -205,7 +238,7 @@ async function startPipeline(taskId) {
     // Step 4: 构建数据集 + 训练
     // ============================================================
     updateTask(taskId, { status: 'training', progress: 75 });
-    appendLog(taskId, '🏗️ Step 4/5: 正在构建YOLO数据集并开始训练...');
+    appendLog(taskId, '🏗️ Step 4: 构建YOLO数据集并训练...');
 
     const labeledImages = db.prepare(
       "SELECT * FROM task_images WHERE task_id = ? AND status = 'labeled'"
@@ -226,7 +259,7 @@ async function startPipeline(taskId) {
 
     const trainCount = splits.filter(s => s.split === 'train').length;
     const valCount = splits.filter(s => s.split === 'val').length;
-    appendLog(taskId, `📂 数据集构建完成 | 训练集: ${trainCount} | 验证集: ${valCount}`);
+    appendLog(taskId, `📂 数据集: 训练 ${trainCount} 张, 验证 ${valCount} 张`);
     appendLog(taskId, `🏃 开始YOLO训练 (epochs: ${task.epochs})...`);
 
     const { metrics, modelPath } = await trainYOLO(
@@ -239,7 +272,7 @@ async function startPipeline(taskId) {
     if (isAborted(taskId)) return;
 
     // ============================================================
-    // Step 5: 结果
+    // Step 5: 完成
     // ============================================================
     updateTask(taskId, {
       status: 'completed',
@@ -248,13 +281,17 @@ async function startPipeline(taskId) {
       metrics: metrics,
     });
 
-    appendLog(taskId, '✅ Step 5/5: 训练完成！');
-    appendLog(taskId, `📊 指标: Precision=${metrics?.precision?.toFixed(4)} Recall=${metrics?.recall?.toFixed(4)} mAP50=${metrics?.mAP50?.toFixed(4)} mAP50-95=${metrics?.mAP50_95?.toFixed(4)}`);
-    appendLog(taskId, `📦 模型文件: ${modelPath}`);
+    appendLog(taskId, '✅ 训练完成！');
+    if (metrics) {
+      appendLog(taskId, `📊 Precision=${metrics.precision?.toFixed(4)} Recall=${metrics.recall?.toFixed(4)} mAP50=${metrics.mAP50?.toFixed(4)} mAP50-95=${metrics.mAP50_95?.toFixed(4)}`);
+    }
+    appendLog(taskId, `📦 模型: ${modelPath}`);
 
   } catch (err) {
-    appendLog(taskId, `❌ 流水线失败: ${err.message}`);
-    updateTask(taskId, { status: 'failed', error: err.message });
+    if (!isAborted(taskId)) {
+      appendLog(taskId, `❌ 流水线失败: ${err.message}`);
+      updateTask(taskId, { status: 'failed', error: err.message });
+    }
   } finally {
     activePipelines.delete(taskId);
   }
