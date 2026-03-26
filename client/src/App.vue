@@ -10,6 +10,8 @@
           </div>
         </router-link>
         <nav class="header-nav">
+          <router-link to="/" class="nav-link">任务</router-link>
+          <router-link to="/predict" class="nav-link">预测审核</router-link>
           <span class="nav-status">
             <span class="status-dot" :class="wsConnected ? 'connected' : ''"></span>
             {{ wsConnected ? '已连接' : '未连接' }}

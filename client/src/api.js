@@ -20,3 +20,9 @@ export const pauseTask = (id) => request(`/tasks/${id}/pause`, { method: 'POST' 
 export const abortTask = (id) => request(`/tasks/${id}/abort`, { method: 'POST' })
 export const deleteTask = (id) => request(`/tasks/${id}`, { method: 'DELETE' })
 export const getConfig = () => request('/config')
+
+export const predictUrl = (taskId, url) =>
+  request('/predict/url', { method: 'POST', body: JSON.stringify({ taskId, url }) })
+
+export const predictBase64 = (taskId, base64) =>
+  request('/predict/base64', { method: 'POST', body: JSON.stringify({ taskId, base64 }) })

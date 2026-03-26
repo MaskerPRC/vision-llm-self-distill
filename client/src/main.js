@@ -7,6 +7,8 @@ import './style.css'
 const routes = [
   { path: '/', name: 'home', component: () => import('./views/Home.vue') },
   { path: '/task/:id', name: 'task', component: () => import('./views/TaskDetail.vue') },
+  { path: '/predict', name: 'predict', component: () => import('./views/Predict.vue') },
+  { path: '/predict/:taskId', name: 'predict-task', component: () => import('./views/Predict.vue') },
 ]
 
 const router = createRouter({
