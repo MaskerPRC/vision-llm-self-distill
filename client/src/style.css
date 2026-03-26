@@ -67,6 +67,14 @@ button {
   transform: none;
 }
 
+.btn-warning {
+  background: var(--warning);
+  color: #0f172a;
+}
+.btn-warning:hover {
+  background: #d97706;
+}
+
 .btn-danger {
   background: var(--danger);
   color: white;

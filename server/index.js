@@ -22,6 +22,24 @@ app.use('/data', express.static(dataDir));
 
 initDB();
 
+const { getDB } = require('./db');
+(function recoverInterruptedTasks() {
+  const db = getDB();
+  const running = ['generating_prompts', 'generating_images', 'labeling', 'training', 'testing'];
+  const placeholders = running.map(() => '?').join(',');
+  const interrupted = db.prepare(
+    `SELECT id, status FROM tasks WHERE status IN (${placeholders})`
+  ).all(...running);
+
+  if (interrupted.length > 0) {
+    const stmt = db.prepare("UPDATE tasks SET status = 'paused', error = '服务器重启，任务已暂停，可点击继续' WHERE id = ?");
+    for (const t of interrupted) {
+      stmt.run(t.id);
+      console.log(`[恢复] 任务 ${t.id} 状态 ${t.status} → paused`);
+    }
+  }
+})();
+
 app.use('/api/tasks', taskRoutes);
 app.use('/api/config', configRoutes);
 

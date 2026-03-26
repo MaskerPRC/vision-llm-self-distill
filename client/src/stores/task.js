@@ -41,6 +41,13 @@ export const useTaskStore = defineStore('task', () => {
     }
   }
 
+  async function pauseTask(id) {
+    await api.pauseTask(id)
+    if (currentTask.value?.id === id) {
+      currentTask.value.status = 'paused'
+    }
+  }
+
   async function abortTask(id) {
     await api.abortTask(id)
   }
@@ -69,7 +76,7 @@ export const useTaskStore = defineStore('task', () => {
 
   return {
     tasks, currentTask, loading, realtimeLogs,
-    fetchTasks, fetchTask, createTask, startTask, abortTask, deleteTask,
+    fetchTasks, fetchTask, createTask, startTask, pauseTask, abortTask, deleteTask,
     handleWSMessage,
   }
 })

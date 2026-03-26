@@ -142,6 +142,7 @@ async function handleCreate() {
 function statusBadgeClass(s) {
   if (s === 'completed') return 'badge-success'
   if (s === 'failed') return 'badge-danger'
+  if (s === 'paused') return 'badge-warning'
   if (s === 'pending') return 'badge-pending'
   return 'badge-running'
 }
@@ -155,6 +156,7 @@ function statusText(s) {
     training: '训练中',
     testing: '测试中',
     completed: '已完成',
+    paused: '已暂停',
     failed: '失败',
   }
   return map[s] || s

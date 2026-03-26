@@ -52,15 +52,30 @@ router.post('/:id/start', (req, res) => {
   const db = getDB();
   const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
   if (!task) return res.status(404).json({ error: '任务不存在' });
-  if (task.status !== 'pending' && task.status !== 'failed') {
-    return res.status(400).json({ error: '只有 pending/failed 状态的任务可以启动' });
+
+  const canStart = ['pending', 'failed', 'paused'].includes(task.status);
+  if (!canStart) {
+    return res.status(400).json({ error: '当前状态无法启动/继续' });
   }
 
-  db.prepare("UPDATE tasks SET status = ?, progress = 0, error = NULL, log = '' WHERE id = ?")
-    .run('generating_prompts', req.params.id);
+  const existingImages = db.prepare(
+    'SELECT COUNT(*) as cnt FROM task_images WHERE task_id = ?'
+  ).get(req.params.id);
+
+  const isResume = existingImages.cnt > 0;
+
+  db.prepare("UPDATE tasks SET status = 'generating_prompts', error = NULL WHERE id = ?")
+    .run(req.params.id);
 
   startPipeline(req.params.id);
-  res.json({ message: '流水线已启动' });
+  res.json({ message: isResume ? '流水线恢复运行（断点续跑）' : '流水线已启动' });
+});
+
+router.post('/:id/pause', (req, res) => {
+  abortPipeline(req.params.id);
+  const db = getDB();
+  db.prepare("UPDATE tasks SET status = 'paused', error = '用户手动暂停' WHERE id = ?").run(req.params.id);
+  res.json({ message: '任务已暂停，可随时继续' });
 });
 
 router.post('/:id/abort', (req, res) => {

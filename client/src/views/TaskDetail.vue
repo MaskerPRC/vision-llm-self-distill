@@ -35,11 +35,25 @@
         </div>
         <div class="header-actions">
           <button
-            v-if="task.status === 'pending' || task.status === 'failed'"
+            v-if="task.status === 'pending'"
             class="btn-primary"
             @click="handleStart"
           >
             ▶ 启动流水线
+          </button>
+          <button
+            v-if="task.status === 'failed' || task.status === 'paused'"
+            class="btn-primary"
+            @click="handleStart"
+          >
+            ▶ 继续流水线
+          </button>
+          <button
+            v-if="isRunning(task.status)"
+            class="btn-warning"
+            @click="handlePause"
+          >
+            ⏸ 暂停
           </button>
           <button
             v-if="isRunning(task.status)"
@@ -57,7 +71,7 @@
             ↓ 下载模型
           </a>
           <button
-            v-if="task.status === 'pending' || task.status === 'completed' || task.status === 'failed'"
+            v-if="['pending', 'completed', 'failed', 'paused'].includes(task.status)"
             class="btn-ghost danger-text"
             @click="handleDelete"
           >
@@ -222,6 +236,11 @@ async function handleStart() {
   }
 }
 
+async function handlePause() {
+  await taskStore.pauseTask(task.value.id)
+  taskStore.fetchTask(route.params.id)
+}
+
 async function handleAbort() {
   if (!confirm('确认终止当前流水线？')) return
   await taskStore.abortTask(task.value.id)
@@ -242,6 +261,7 @@ function getImageUrl(imgPath) {
 function statusBadgeClass(s) {
   if (s === 'completed') return 'badge-success'
   if (s === 'failed') return 'badge-danger'
+  if (s === 'paused') return 'badge-warning'
   if (s === 'pending') return 'badge-pending'
   return 'badge-running'
 }
@@ -262,13 +282,14 @@ function statusText(s) {
     training: '训练中',
     testing: '测试中',
     completed: '已完成',
+    paused: '已暂停',
     failed: '失败',
   }
   return map[s] || s
 }
 
 function isRunning(s) {
-  return !['pending', 'completed', 'failed'].includes(s)
+  return !['pending', 'completed', 'failed', 'paused'].includes(s)
 }
 
 function formatTime(t) {
