@@ -2,7 +2,7 @@ const axios = require('axios');
 
 function getLLMClient() {
   return axios.create({
-    baseURL: process.env.LLM_API_BASE || 'https://api.openai.com/v1',
+    baseURL: process.env.LLM_API_BASE || 'https://openrouter.ai/api/v1',
     headers: {
       'Authorization': `Bearer ${process.env.LLM_API_KEY}`,
       'Content-Type': 'application/json',
@@ -13,7 +13,7 @@ function getLLMClient() {
 
 async function generatePrompts(description, classes, count) {
   const client = getLLMClient();
-  const model = process.env.LLM_MODEL || 'gpt-4o';
+  const model = process.env.LLM_MODEL || 'google/gemini-2.5-flash';
 
   const systemPrompt = `你是一个专业的AI图片生成提示词专家。用户会告诉你需要识别的视觉元素（类别），你需要为文本生图模型生成多样化的提示词。
 

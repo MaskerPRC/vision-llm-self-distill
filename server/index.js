@@ -9,7 +9,7 @@ const taskRoutes = require('./routes/tasks');
 const configRoutes = require('./routes/config');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3015;
 
 app.use(cors());
 app.use(express.json());

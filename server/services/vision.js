@@ -4,18 +4,18 @@ const path = require('path');
 
 function getVisionClient() {
   return axios.create({
-    baseURL: process.env.VISION_API_BASE || 'https://api.openai.com/v1',
+    baseURL: process.env.VISION_API_BASE || 'https://openrouter.ai/api/v1',
     headers: {
       'Authorization': `Bearer ${process.env.VISION_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    timeout: 60000,
+    timeout: 120000,
   });
 }
 
 async function labelImage(imagePath, classes) {
   const client = getVisionClient();
-  const model = process.env.VISION_MODEL || 'gpt-4o';
+  const model = process.env.VISION_MODEL || 'google/gemini-3.1-pro-preview';
 
   const imageBuffer = fs.readFileSync(imagePath);
   const base64Image = imageBuffer.toString('base64');
