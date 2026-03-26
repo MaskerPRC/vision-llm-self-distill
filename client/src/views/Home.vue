@@ -74,6 +74,9 @@
             {{ statusText(task.status) }}
           </span>
         </div>
+        <div v-if="task.forked_from" class="task-fork-tag">
+          <span>&#9095;</span> Forked
+        </div>
         <p class="task-desc">{{ task.description }}</p>
         <div class="task-classes">
           <span class="class-tag" v-for="c in task.classes" :key="c">{{ c }}</span>
@@ -254,6 +257,19 @@ function formatTime(t) {
 .task-card-header h3 {
   font-size: 16px;
   font-weight: 700;
+}
+.task-fork-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  margin-bottom: 6px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 10px;
+  font-size: 11px;
+  color: var(--primary);
+  font-weight: 600;
 }
 .task-desc {
   color: var(--text-secondary);

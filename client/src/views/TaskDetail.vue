@@ -21,6 +21,11 @@
             {{ statusText(task.status) }}
           </span>
         </div>
+        <div v-if="task.forked_from" class="fork-badge">
+          <span class="fork-icon">&#9095;</span>
+          Forked from
+          <router-link :to="`/task/${task.forked_from}`" class="fork-link">{{ task.forked_from.slice(0, 8) }}...</router-link>
+        </div>
         <div class="header-classes">
           <span class="class-tag" v-for="c in task.classes" :key="c">{{ c }}</span>
         </div>
@@ -77,6 +82,13 @@
           >
             ↓ 下载模型
           </a>
+          <button
+            v-if="task.status !== 'pending' && !isRunning(task.status)"
+            class="btn-secondary"
+            @click="showForkModal = true"
+          >
+            Fork 重跑
+          </button>
           <button
             v-if="['pending', 'completed', 'failed', 'paused'].includes(task.status)"
             class="btn-ghost danger-text"
@@ -226,6 +238,36 @@
         </div>
       </div>
 
+      <!-- Fork Modal -->
+      <div class="modal-overlay" v-if="showForkModal" @click.self="showForkModal = false">
+        <div class="modal-content fork-modal">
+          <button class="modal-close" @click="showForkModal = false">&#10005;</button>
+          <h2>Fork 项目 &mdash; 选择重跑起点</h2>
+          <p class="fork-desc">将创建一个新项目，复制所选步骤之前的全部数据，原项目数据保持不变。</p>
+          <div class="fork-steps">
+            <div
+              v-for="opt in forkOptions"
+              :key="opt.step"
+              class="fork-step-option"
+              :class="{ selected: forkStep === opt.step, disabled: !opt.available }"
+              @click="opt.available && (forkStep = opt.step)"
+            >
+              <div class="fork-step-num">{{ opt.step }}</div>
+              <div class="fork-step-info">
+                <div class="fork-step-title">{{ opt.title }}</div>
+                <div class="fork-step-copy">{{ opt.copyDesc }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="fork-actions">
+            <button class="btn-primary" :disabled="forking" @click="handleFork">
+              {{ forking ? 'Fork 中...' : 'Fork 并跳转' }}
+            </button>
+            <button class="btn-ghost" @click="showForkModal = false">取消</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Logs -->
       <div class="card log-section">
         <h2>运行日志</h2>
@@ -257,6 +299,10 @@ const logContainer = ref(null)
 const displayCount = ref(20)
 const showBoxes = ref(true)
 const previewImg = ref(null)
+
+const showForkModal = ref(false)
+const forkStep = ref(1)
+const forking = ref(false)
 
 const classColors = ['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
 
@@ -333,6 +379,35 @@ async function handleDelete() {
   if (!confirm('确认删除此任务？所有数据将被清除。')) return
   await taskStore.deleteTask(task.value.id)
   router.push('/')
+}
+
+const forkOptions = computed(() => {
+  const s = task.value?.status || 'pending'
+  const order = ['generating_prompts', 'generating_images', 'labeling', 'training', 'completed']
+  const idx = order.indexOf(s)
+  const hasImages = (task.value?.images || []).length > 0
+  const hasGenerated = (task.value?.images || []).some(i => i.image_path)
+  const hasLabeled = (task.value?.images || []).some(i => i.label_path)
+
+  return [
+    { step: 1, title: '从头开始 — 重新生成提示词', copyDesc: '不复制任何数据，仅保留任务配置', available: true },
+    { step: 2, title: '从生成图片开始', copyDesc: '复制已有提示词', available: hasImages },
+    { step: 3, title: '从自动标注开始', copyDesc: '复制提示词 + 图片文件', available: hasGenerated },
+    { step: 4, title: '从训练开始', copyDesc: '复制提示词 + 图片 + 标注文件', available: hasLabeled },
+  ]
+})
+
+async function handleFork() {
+  forking.value = true
+  try {
+    const newTask = await taskStore.forkTask(task.value.id, forkStep.value)
+    showForkModal.value = false
+    router.push(`/task/${newTask.id}`)
+  } catch (err) {
+    alert('Fork 失败: ' + err.message)
+  } finally {
+    forking.value = false
+  }
 }
 
 function getImageUrl(imgPath) {
@@ -766,6 +841,122 @@ function formatNum(v) {
   border-radius: 50%;
   animation: spin 0.8s linear infinite;
   margin: 0 auto 12px;
+}
+
+/* Fork badge */
+.fork-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  margin-bottom: 12px;
+  background: rgba(99, 102, 241, 0.08);
+  border: 1px solid rgba(99, 102, 241, 0.2);
+  border-radius: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+.fork-icon {
+  font-size: 14px;
+  color: var(--primary);
+}
+.fork-link {
+  color: var(--primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+.fork-link:hover {
+  text-decoration: underline;
+}
+
+/* Fork modal */
+.fork-modal {
+  max-width: 520px;
+  padding: 28px 32px;
+}
+.fork-modal h2 {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+.fork-desc {
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-bottom: 20px;
+  line-height: 1.6;
+}
+.fork-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.fork-step-option {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  background: var(--bg);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.fork-step-option:hover:not(.disabled) {
+  border-color: var(--primary);
+}
+.fork-step-option.selected {
+  border-color: var(--primary);
+  background: rgba(99, 102, 241, 0.08);
+}
+.fork-step-option.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.fork-step-num {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.fork-step-option.selected .fork-step-num {
+  background: var(--primary);
+  color: white;
+}
+.fork-step-title {
+  font-size: 14px;
+  font-weight: 600;
+}
+.fork-step-copy {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+.fork-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.btn-secondary {
+  padding: 10px 20px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.btn-secondary:hover {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 @media (max-width: 768px) {

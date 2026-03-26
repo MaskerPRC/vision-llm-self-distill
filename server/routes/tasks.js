@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const fs = require('fs');
+const path = require('path');
 const { v4: uuidv4 } = require('uuid');
 const { getDB } = require('../db');
 const { startPipeline, abortPipeline } = require('../pipeline');
@@ -89,6 +90,79 @@ router.post('/:id/abort', (req, res) => {
   const db = getDB();
   db.prepare("UPDATE tasks SET status = 'failed', error = '用户手动终止' WHERE id = ?").run(req.params.id);
   res.json({ message: '任务已终止' });
+});
+
+// Fork: create a new task from an existing one, restarting from a chosen step
+// from_step: 1=prompts, 2=images, 3=labeling, 4=training
+// Data from steps *before* from_step is copied to the new task
+router.post('/:id/fork', async (req, res) => {
+  try {
+    const db = getDB();
+    const source = db.prepare('SELECT * FROM tasks WHERE id = ?').get(req.params.id);
+    if (!source) return res.status(404).json({ error: '源任务不存在' });
+
+    const fromStep = parseInt(req.body.from_step);
+    if (![1, 2, 3, 4].includes(fromStep)) {
+      return res.status(400).json({ error: 'from_step 必须为 1~4' });
+    }
+
+    const newId = uuidv4();
+    const newName = `${source.name} (fork)`;
+
+    db.prepare(`
+      INSERT INTO tasks (id, name, description, classes, image_count, epochs, test_split, forked_from)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(newId, newName, source.description, source.classes, source.image_count, source.epochs, source.test_split, source.id);
+
+    const sourceImages = db.prepare(
+      'SELECT * FROM task_images WHERE task_id = ? ORDER BY created_at'
+    ).all(source.id);
+
+    const dataDir = path.join(__dirname, '..', '..', 'data');
+
+    if (fromStep >= 2 && sourceImages.length > 0) {
+      // Copy prompt records; if from_step >= 3 also copy image files; if from_step >= 4 also copy label files
+      const newImgDir = path.join(dataDir, 'images', newId);
+      const newLblDir = path.join(dataDir, 'labels', newId);
+      if (fromStep >= 3) fs.mkdirSync(newImgDir, { recursive: true });
+      if (fromStep >= 4) fs.mkdirSync(newLblDir, { recursive: true });
+
+      const insertStmt = db.prepare(
+        'INSERT INTO task_images (id, task_id, prompt, image_path, label_path, status) VALUES (?, ?, ?, ?, ?, ?)'
+      );
+
+      db.transaction(() => {
+        for (const img of sourceImages) {
+          const newImgId = uuidv4();
+          let newImagePath = null;
+          let newLabelPath = null;
+          let status = 'pending';
+
+          if (fromStep >= 3 && img.image_path && fs.existsSync(img.image_path)) {
+            const ext = path.extname(img.image_path);
+            newImagePath = path.join(newImgDir, `${newImgId}${ext}`);
+            fs.copyFileSync(img.image_path, newImagePath);
+            status = 'generated';
+          }
+
+          if (fromStep >= 4 && img.label_path && fs.existsSync(img.label_path)) {
+            newLabelPath = path.join(newLblDir, `${newImgId}.txt`);
+            fs.copyFileSync(img.label_path, newLabelPath);
+            status = 'labeled';
+          }
+
+          insertStmt.run(newImgId, newId, img.prompt, newImagePath, newLabelPath, status);
+        }
+      })();
+    }
+
+    const task = db.prepare('SELECT * FROM tasks WHERE id = ?').get(newId);
+    task.classes = JSON.parse(task.classes);
+    res.status(201).json(task);
+  } catch (err) {
+    console.error('Fork failed:', err);
+    res.status(500).json({ error: 'Fork 失败: ' + err.message });
+  }
 });
 
 router.delete('/:id', (req, res) => {

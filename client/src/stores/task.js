@@ -57,6 +57,12 @@ export const useTaskStore = defineStore('task', () => {
     tasks.value = tasks.value.filter(t => t.id !== id)
   }
 
+  async function forkTask(id, fromStep) {
+    const task = await api.forkTask(id, fromStep)
+    tasks.value.unshift(task)
+    return task
+  }
+
   function handleWSMessage(data) {
     if (data.type === 'task_update' && data.taskId) {
       const idx = tasks.value.findIndex(t => t.id === data.taskId)
@@ -76,7 +82,7 @@ export const useTaskStore = defineStore('task', () => {
 
   return {
     tasks, currentTask, loading, realtimeLogs,
-    fetchTasks, fetchTask, createTask, startTask, pauseTask, abortTask, deleteTask,
+    fetchTasks, fetchTask, createTask, startTask, pauseTask, abortTask, deleteTask, forkTask,
     handleWSMessage,
   }
 })

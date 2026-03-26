@@ -30,6 +30,7 @@ function initDB() {
       metrics TEXT,                    -- JSON: {precision, recall, mAP50, mAP50_95}
       error TEXT,
       log TEXT DEFAULT '',
+      forked_from TEXT,                -- source task id if forked
       created_at TEXT DEFAULT (datetime('now')),
       updated_at TEXT DEFAULT (datetime('now'))
     );
@@ -55,6 +56,12 @@ function initDB() {
       FOREIGN KEY (task_id) REFERENCES tasks(id)
     );
   `);
+
+  try {
+    db.exec(`ALTER TABLE tasks ADD COLUMN forked_from TEXT`);
+  } catch (_) {
+    // column already exists
+  }
 
   return db;
 }

@@ -19,6 +19,7 @@ export const startTask = (id) => request(`/tasks/${id}/start`, { method: 'POST' 
 export const pauseTask = (id) => request(`/tasks/${id}/pause`, { method: 'POST' })
 export const abortTask = (id) => request(`/tasks/${id}/abort`, { method: 'POST' })
 export const deleteTask = (id) => request(`/tasks/${id}`, { method: 'DELETE' })
+export const forkTask = (id, fromStep) => request(`/tasks/${id}/fork`, { method: 'POST', body: JSON.stringify({ from_step: fromStep }) })
 export const getConfig = () => request('/config')
 
 export const getPredictions = (taskId) => request(`/predict/${taskId}`)
