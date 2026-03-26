@@ -1,5 +1,6 @@
 const express = require('express');
 const router = express.Router();
+const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { getDB } = require('../db');
 const { startPipeline, abortPipeline } = require('../pipeline');
@@ -22,6 +23,11 @@ router.get('/:id', (req, res) => {
   if (task.metrics) task.metrics = JSON.parse(task.metrics);
 
   const images = db.prepare('SELECT * FROM task_images WHERE task_id = ? ORDER BY created_at').all(req.params.id);
+  images.forEach(img => {
+    if (img.label_path && fs.existsSync(img.label_path)) {
+      img.labels = fs.readFileSync(img.label_path, 'utf-8').trim();
+    }
+  });
   task.images = images;
   res.json(task);
 });

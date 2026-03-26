@@ -133,18 +133,39 @@
 
       <!-- Sample Images -->
       <div class="card" v-if="task.images && task.images.length > 0">
-        <h2>生成的图片 <span class="count">({{ task.images.length }})</span></h2>
+        <div class="images-header">
+          <h2>生成的图片 <span class="count">({{ task.images.length }})</span></h2>
+          <label class="toggle-label">
+            <input type="checkbox" v-model="showBoxes" />
+            <span>显示标注框</span>
+          </label>
+        </div>
         <div class="image-grid">
           <div
             v-for="img in task.images.slice(0, displayCount)"
             :key="img.id"
             class="image-item"
+            @click="openPreview(img)"
           >
             <div class="image-wrapper" v-if="img.image_path">
               <img :src="getImageUrl(img.image_path)" :alt="img.prompt" loading="lazy" />
+              <svg v-if="showBoxes && img.labels" class="bbox-overlay" viewBox="0 0 1 1" preserveAspectRatio="none">
+                <rect
+                  v-for="(box, bi) in parseLabels(img.labels)"
+                  :key="bi"
+                  :x="box.x - box.w / 2"
+                  :y="box.y - box.h / 2"
+                  :width="box.w"
+                  :height="box.h"
+                  :stroke="classColors[box.cls % classColors.length]"
+                  stroke-width="0.006"
+                  fill="none"
+                />
+              </svg>
               <span class="image-badge" :class="img.split === 'val' ? 'badge-warning' : 'badge-info'">
                 {{ img.split }}
               </span>
+              <span v-if="img.labels" class="box-count-badge">{{ parseLabels(img.labels).length }} 框</span>
             </div>
             <div class="image-info">
               <span class="image-status badge" :class="imgStatusClass(img.status)">{{ img.status }}</span>
@@ -158,6 +179,44 @@
         >
           加载更多 ({{ task.images.length - displayCount }} 张)
         </button>
+      </div>
+
+      <!-- Image Preview Modal -->
+      <div class="modal-overlay" v-if="previewImg" @click.self="previewImg = null">
+        <div class="modal-content">
+          <button class="modal-close" @click="previewImg = null">✕</button>
+          <div class="preview-image-wrapper">
+            <img :src="getImageUrl(previewImg.image_path)" />
+            <svg v-if="showBoxes && previewImg.labels" class="bbox-overlay" viewBox="0 0 1 1" preserveAspectRatio="none">
+              <template v-for="(box, bi) in parseLabels(previewImg.labels)" :key="bi">
+                <rect
+                  :x="box.x - box.w / 2"
+                  :y="box.y - box.h / 2"
+                  :width="box.w"
+                  :height="box.h"
+                  :stroke="classColors[box.cls % classColors.length]"
+                  stroke-width="0.003"
+                  fill="none"
+                />
+                <text
+                  :x="box.x - box.w / 2 + 0.004"
+                  :y="box.y - box.h / 2 + 0.025"
+                  :fill="classColors[box.cls % classColors.length]"
+                  font-size="0.02"
+                  font-weight="bold"
+                >{{ task.classes[box.cls] || box.cls }}</text>
+              </template>
+            </svg>
+          </div>
+          <div class="preview-info">
+            <div class="preview-prompt" v-if="previewImg.prompt">{{ previewImg.prompt }}</div>
+            <div class="preview-meta">
+              <span class="badge" :class="imgStatusClass(previewImg.status)">{{ previewImg.status }}</span>
+              <span v-if="previewImg.split" class="badge" :class="previewImg.split === 'val' ? 'badge-warning' : 'badge-info'">{{ previewImg.split }}</span>
+              <span v-if="previewImg.labels">{{ parseLabels(previewImg.labels).length }} 个标注框</span>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Logs -->
@@ -189,8 +248,24 @@ const router = useRouter()
 const taskStore = useTaskStore()
 const logContainer = ref(null)
 const displayCount = ref(20)
+const showBoxes = ref(true)
+const previewImg = ref(null)
+
+const classColors = ['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
 
 const task = computed(() => taskStore.currentTask)
+
+function parseLabels(labelStr) {
+  if (!labelStr) return []
+  return labelStr.split('\n').filter(Boolean).map(line => {
+    const [cls, x, y, w, h] = line.trim().split(/\s+/).map(Number)
+    return { cls, x, y, w, h }
+  }).filter(b => !isNaN(b.cls) && !isNaN(b.x))
+}
+
+function openPreview(img) {
+  previewImg.value = img
+}
 
 const logLines = computed(() => {
   if (!task.value?.log) return []
@@ -489,9 +564,27 @@ function formatNum(v) {
 }
 
 /* Images */
+.images-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+.toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+}
+.toggle-label input {
+  width: auto;
+  accent-color: var(--primary);
+}
 .image-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
   gap: 12px;
   margin-top: 16px;
 }
@@ -499,6 +592,11 @@ function formatNum(v) {
   border-radius: var(--radius-sm);
   overflow: hidden;
   background: var(--bg);
+  cursor: pointer;
+  transition: transform 0.2s;
+}
+.image-item:hover {
+  transform: scale(1.02);
 }
 .image-wrapper {
   position: relative;
@@ -508,6 +606,15 @@ function formatNum(v) {
   width: 100%;
   height: 100%;
   object-fit: cover;
+  display: block;
+}
+.bbox-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 .image-badge {
   position: absolute;
@@ -517,6 +624,17 @@ function formatNum(v) {
   border-radius: 8px;
   font-size: 10px;
   font-weight: 700;
+}
+.box-count-badge {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 700;
+  background: rgba(0,0,0,0.7);
+  color: #22c55e;
 }
 .image-info {
   padding: 6px 8px;
@@ -532,6 +650,69 @@ function formatNum(v) {
   font-weight: 400;
   color: var(--text-secondary);
   font-size: 14px;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.modal-content {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  max-width: 900px;
+  max-height: 90vh;
+  width: 100%;
+  overflow: auto;
+  position: relative;
+}
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 10;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(0,0,0,0.6);
+  color: white;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 16px;
+}
+.preview-image-wrapper {
+  position: relative;
+  width: 100%;
+}
+.preview-image-wrapper img {
+  width: 100%;
+  display: block;
+  border-radius: var(--radius) var(--radius) 0 0;
+}
+.preview-info {
+  padding: 16px 20px;
+}
+.preview-prompt {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+  margin-bottom: 10px;
+}
+.preview-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
 /* Logs */
