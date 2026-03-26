@@ -99,6 +99,26 @@ onUnmounted(() => { if (ws) ws.close() })
   font-size: 11px;
   color: var(--text-secondary);
 }
+.header-nav {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+.nav-link {
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s;
+}
+.nav-link:hover {
+  color: var(--text);
+}
+.nav-link.router-link-active {
+  color: var(--primary-hover);
+  border-bottom-color: var(--primary);
+}
 .nav-status {
   display: flex;
   align-items: center;

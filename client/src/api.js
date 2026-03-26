@@ -21,6 +21,10 @@ export const abortTask = (id) => request(`/tasks/${id}/abort`, { method: 'POST' 
 export const deleteTask = (id) => request(`/tasks/${id}`, { method: 'DELETE' })
 export const getConfig = () => request('/config')
 
+export const getPredictions = (taskId) => request(`/predict/${taskId}`)
+export const clearPredictions = (taskId) => request(`/predict/${taskId}`, { method: 'DELETE' })
+export const deletePrediction = (id) => request(`/predict/item/${id}`, { method: 'DELETE' })
+
 export const predictUrl = (taskId, url) =>
   request('/predict/url', { method: 'POST', body: JSON.stringify({ taskId, url }) })
 

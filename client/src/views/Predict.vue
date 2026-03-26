@@ -75,7 +75,7 @@
     <div v-if="results.length > 0" class="results-section">
       <div class="results-header">
         <h2>预测结果 <span class="count">({{ results.length }})</span></h2>
-        <button class="btn-ghost" @click="results = []">清空</button>
+        <button class="btn-ghost" @click="clearResults">清空</button>
       </div>
       <div class="results-grid">
         <div
@@ -168,7 +168,10 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted } from 'vue'
+import { useRoute } from 'vue-router'
 import * as api from '../api'
+
+const route = useRoute()
 
 const classColors = ['#ef4444', '#22c55e', '#3b82f6', '#f59e0b', '#a855f7', '#ec4899', '#14b8a6', '#f97316']
 
@@ -184,8 +187,11 @@ const pasteListening = ref(false)
 onMounted(async () => {
   const tasks = await api.getTasks()
   completedTasks.value = tasks.filter(t => t.status === 'completed' && t.model_path)
-  if (completedTasks.value.length === 1) {
-    selectedTask.value = completedTasks.value[0]
+  if (route.params.taskId) {
+    const match = completedTasks.value.find(t => t.id === route.params.taskId)
+    if (match) await selectTask(match)
+  } else if (completedTasks.value.length === 1) {
+    await selectTask(completedTasks.value[0])
   }
   document.addEventListener('paste', globalPaste)
 })
@@ -194,9 +200,19 @@ onUnmounted(() => {
   document.removeEventListener('paste', globalPaste)
 })
 
-function selectTask(t) {
+async function selectTask(t) {
   selectedTask.value = t
   results.value = []
+  try {
+    const saved = await api.getPredictions(t.id)
+    results.value = saved.map(r => ({
+      id: r.id,
+      imageUrl: r.image_url,
+      detections: r.detections,
+      loading: false,
+      error: null,
+    }))
+  } catch {}
 }
 
 function triggerFileInput() {
@@ -284,8 +300,9 @@ function processUrl(url) {
 async function predictBase64(base64, idx) {
   try {
     const res = await api.predictBase64(selectedTask.value.id, base64)
+    results.value[idx].id = res.id
     results.value[idx].detections = res.detections
-    if (res.image_url) results.value[idx].serverUrl = res.image_url
+    if (res.image_url) results.value[idx].imageUrl = res.image_url
   } catch (err) {
     results.value[idx].error = err.message
   } finally {
@@ -296,16 +313,22 @@ async function predictBase64(base64, idx) {
 async function predictUrl(url, idx) {
   try {
     const res = await api.predictUrl(selectedTask.value.id, url)
+    results.value[idx].id = res.id
     results.value[idx].detections = res.detections
-    if (res.image_url) {
-      results.value[idx].imageUrl = res.image_url
-      results.value[idx].serverUrl = res.image_url
-    }
+    if (res.image_url) results.value[idx].imageUrl = res.image_url
   } catch (err) {
     results.value[idx].error = err.message
   } finally {
     results.value[idx].loading = false
   }
+}
+
+async function clearResults() {
+  if (!selectedTask.value) return
+  try {
+    await api.clearPredictions(selectedTask.value.id)
+  } catch {}
+  results.value = []
 }
 
 function openPreview(item) {

@@ -62,6 +62,13 @@
           >
             ■ 终止
           </button>
+          <router-link
+            v-if="task.model_path"
+            :to="`/predict/${task.id}`"
+            class="btn-primary"
+          >
+            🔍 预测审核
+          </router-link>
           <a
             v-if="task.model_path"
             :href="modelDownloadUrl"

@@ -45,6 +45,15 @@ function initDB() {
       created_at TEXT DEFAULT (datetime('now')),
       FOREIGN KEY (task_id) REFERENCES tasks(id)
     );
+
+    CREATE TABLE IF NOT EXISTS predictions (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL,
+      image_url TEXT NOT NULL,
+      detections TEXT,                -- JSON array
+      created_at TEXT DEFAULT (datetime('now')),
+      FOREIGN KEY (task_id) REFERENCES tasks(id)
+    );
   `);
 
   return db;
