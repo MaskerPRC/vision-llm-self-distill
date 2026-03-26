@@ -61,33 +61,50 @@ function trainYOLO(yamlPath, epochs, taskId, onLog) {
     const modelDir = path.join(__dirname, '..', '..', 'data', 'models', taskId);
     fs.mkdirSync(modelDir, { recursive: true });
 
+    const yoloModel = process.env.YOLO_MODEL || 'yolo11n.pt';
+    const mosaic = parseFloat(process.env.AUGMENT_MOSAIC) || 1.0;
+    const mixup = parseFloat(process.env.AUGMENT_MIXUP) || 0.3;
+    const copyPaste = parseFloat(process.env.AUGMENT_COPY_PASTE) || 0.1;
+    const scale = parseFloat(process.env.AUGMENT_SCALE) || 0.9;
+
     const script = `
 import sys, json
+from multiprocessing import freeze_support
 from ultralytics import YOLO
 
-model = YOLO('yolov8n.pt')
-results = model.train(
-    data='${yamlPath.replace(/\\/g, '/')}',
-    epochs=${epochs},
-    imgsz=640,
-    batch=16,
-    project='${modelDir.replace(/\\/g, '/')}',
-    name='train',
-    exist_ok=True,
-    verbose=True
-)
+def main():
+    model = YOLO('${yoloModel}')
+    model.train(
+        data='${yamlPath.replace(/\\/g, '/')}',
+        epochs=${epochs},
+        imgsz=640,
+        batch=16,
+        project='${modelDir.replace(/\\/g, '/')}',
+        name='train',
+        exist_ok=True,
+        verbose=True,
+        workers=0,
+        mosaic=${mosaic},
+        mixup=${mixup},
+        copy_paste=${copyPaste},
+        scale=${scale},
+    )
 
-metrics = model.val()
-results_dict = {
-    'precision': float(metrics.box.mp),
-    'recall': float(metrics.box.mr),
-    'mAP50': float(metrics.box.map50),
-    'mAP50_95': float(metrics.box.map)
-}
+    metrics = model.val()
+    results_dict = {
+        'precision': float(metrics.box.mp),
+        'recall': float(metrics.box.mr),
+        'mAP50': float(metrics.box.map50),
+        'mAP50_95': float(metrics.box.map)
+    }
 
-best_model = '${modelDir.replace(/\\/g, '/')}/train/weights/best.pt'
-print('METRICS_JSON:' + json.dumps(results_dict))
-print('MODEL_PATH:' + best_model)
+    best_model = '${modelDir.replace(/\\/g, '/')}/train/weights/best.pt'
+    print('METRICS_JSON:' + json.dumps(results_dict))
+    print('MODEL_PATH:' + best_model)
+
+if __name__ == '__main__':
+    freeze_support()
+    main()
 `;
 
     const scriptPath = path.join(modelDir, 'train.py');

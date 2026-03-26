@@ -63,6 +63,12 @@ function initDB() {
     // column already exists
   }
 
+  try {
+    db.exec(`ALTER TABLE task_images ADD COLUMN is_negative INTEGER DEFAULT 0`);
+  } catch (_) {
+    // column already exists
+  }
+
   return db;
 }
 

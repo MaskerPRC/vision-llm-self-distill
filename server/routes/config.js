@@ -13,6 +13,14 @@ router.get('/', (req, res) => {
     default_epochs: parseInt(process.env.DEFAULT_EPOCHS) || 50,
     test_split_ratio: parseFloat(process.env.TEST_SPLIT_RATIO) || 0.2,
     python_path: process.env.PYTHON_PATH || 'python',
+    yolo_model: process.env.YOLO_MODEL || 'yolo11n.pt',
+    negative_sample_ratio: parseFloat(process.env.NEGATIVE_SAMPLE_RATIO) || 0,
+    augmentation: {
+      mosaic: parseFloat(process.env.AUGMENT_MOSAIC) || 1.0,
+      mixup: parseFloat(process.env.AUGMENT_MIXUP) || 0.3,
+      copy_paste: parseFloat(process.env.AUGMENT_COPY_PASTE) || 0.1,
+      scale: parseFloat(process.env.AUGMENT_SCALE) || 0.9,
+    },
   });
 });
 

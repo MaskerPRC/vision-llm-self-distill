@@ -3,7 +3,7 @@ const fs = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const { getDB } = require('./db');
 const { broadcast } = require('./ws');
-const { generatePrompts } = require('./services/llm');
+const { generatePrompts, generateNegativePrompts } = require('./services/llm');
 const { generateImage } = require('./services/imageGen');
 const { labelImage } = require('./services/vision');
 const { buildDatasetStructure, trainYOLO } = require('./services/yolo');
@@ -108,39 +108,64 @@ async function startPipeline(taskId) {
     appendLog(taskId, `🚀 流水线${hasExistingData ? '恢复' : '启动'} | 类别: ${classes.join(', ')} | 目标: ${targetCount} 张`);
 
     // ============================================================
-    // Step 1: 生成提示词
+    // Step 1: 生成提示词 (含正样本 + 负样本)
     // ============================================================
     let imageRecords;
+    const negativeRatio = parseFloat(process.env.NEGATIVE_SAMPLE_RATIO) || 0;
+    const negativeCount = Math.floor(targetCount * negativeRatio);
+    const positiveCount = targetCount - negativeCount;
 
     if (hasExistingData) {
       imageRecords = existingImages;
       const labeled = existingImages.filter(r => r.label_path && fs.existsSync(r.label_path)).length;
       const generated = existingImages.filter(r => r.image_path && fs.existsSync(r.image_path)).length;
-      appendLog(taskId, `📝 Step 1: 复用已有 ${existingImages.length} 条记录 (${generated} 张图片, ${labeled} 条标注)`);
+      const negCount = existingImages.filter(r => r.is_negative).length;
+      appendLog(taskId, `📝 Step 1: 复用已有 ${existingImages.length} 条记录 (${generated} 张图片, ${labeled} 条标注, ${negCount} 张负样本)`);
     } else {
       updateTask(taskId, { status: 'generating_prompts', progress: 5 });
       appendLog(taskId, '📝 Step 1: 正在生成提示词...');
 
-      const prompts = await withRetry(() => generatePrompts(task.description, classes, targetCount));
-      appendLog(taskId, `✅ 已生成 ${prompts.length} 个提示词`);
+      const prompts = await withRetry(() => generatePrompts(task.description, classes, positiveCount));
+      appendLog(taskId, `✅ 已生成 ${prompts.length} 个正样本提示词`);
 
       if (isAborted(taskId)) return;
 
-      imageRecords = prompts.map(prompt => ({
-        id: uuidv4(),
-        task_id: taskId,
-        prompt,
-        status: 'pending',
-        image_path: null,
-        label_path: null,
-      }));
+      let negativePrompts = [];
+      if (negativeCount > 0) {
+        appendLog(taskId, `📝 正在生成 ${negativeCount} 个负样本提示词...`);
+        negativePrompts = await withRetry(() => generateNegativePrompts(task.description, classes, negativeCount));
+        appendLog(taskId, `✅ 已生成 ${negativePrompts.length} 个负样本提示词`);
+      }
+
+      if (isAborted(taskId)) return;
+
+      imageRecords = [
+        ...prompts.map(prompt => ({
+          id: uuidv4(),
+          task_id: taskId,
+          prompt,
+          status: 'pending',
+          image_path: null,
+          label_path: null,
+          is_negative: 0,
+        })),
+        ...negativePrompts.map(prompt => ({
+          id: uuidv4(),
+          task_id: taskId,
+          prompt,
+          status: 'pending',
+          image_path: null,
+          label_path: null,
+          is_negative: 1,
+        })),
+      ];
 
       const insertStmt = db.prepare(
-        'INSERT INTO task_images (id, task_id, prompt, status) VALUES (?, ?, ?, ?)'
+        'INSERT INTO task_images (id, task_id, prompt, status, is_negative) VALUES (?, ?, ?, ?, ?)'
       );
       db.transaction(() => {
         for (const r of imageRecords) {
-          insertStmt.run(r.id, r.task_id, r.prompt, 'pending');
+          insertStmt.run(r.id, r.task_id, r.prompt, 'pending', r.is_negative || 0);
         }
       })();
     }
@@ -190,7 +215,7 @@ async function startPipeline(taskId) {
     if (isAborted(taskId)) return;
 
     // ============================================================
-    // Step 3: 并行视觉标注 (低并发 + 重试)
+    // Step 3: 并行视觉标注 (低并发 + 重试) + 负样本空标签
     // ============================================================
     const allGenerated = imageRecords.filter(r => r.image_path && fs.existsSync(r.image_path));
     const needLabel = allGenerated.filter(r => !r.label_path || !fs.existsSync(r.label_path));
@@ -201,7 +226,9 @@ async function startPipeline(taskId) {
     if (needLabel.length === 0) {
       appendLog(taskId, `🏷️ Step 3: 全部 ${allGenerated.length} 张已标注，跳过`);
     } else {
-      appendLog(taskId, `🏷️ Step 3: 标注 ${needLabel.length}/${allGenerated.length} 张 (并发 ${CONCURRENCY_LABEL}, 自动重试)...`);
+      const negInBatch = needLabel.filter(r => r.is_negative).length;
+      const posInBatch = needLabel.length - negInBatch;
+      appendLog(taskId, `🏷️ Step 3: 标注 ${posInBatch} 张正样本 + ${negInBatch} 张负样本(空标签) (并发 ${CONCURRENCY_LABEL}, 自动重试)...`);
       const labelDir = path.join(__dirname, '..', 'data', 'labels', taskId);
       fs.mkdirSync(labelDir, { recursive: true });
 
@@ -211,22 +238,28 @@ async function startPipeline(taskId) {
 
       await runParallel(needLabel, CONCURRENCY_LABEL, taskId, async (record) => {
         try {
-          const labelContent = await withRetry(() => labelImage(record.image_path, classes));
           const labelPath = path.join(labelDir, `${record.id}.txt`);
-          fs.writeFileSync(labelPath, labelContent);
+
+          if (record.is_negative) {
+            fs.writeFileSync(labelPath, '');
+          } else {
+            const labelContent = await withRetry(() => labelImage(record.image_path, classes));
+            fs.writeFileSync(labelPath, labelContent);
+          }
+
           record.label_path = labelPath;
           record.status = 'labeled';
           db.prepare("UPDATE task_images SET label_path = ?, status = 'labeled' WHERE id = ?")
             .run(labelPath, record.id);
           doneCount++;
           updateTask(taskId, { progress: 50 + Math.floor(doneCount / labelTotal * 20) });
-          appendLog(taskId, `🏷️ [${doneCount}/${labelTotal}] 标注完成`);
+          appendLog(taskId, `🏷️ [${doneCount}/${labelTotal}] ${record.is_negative ? '负样本' : '标注'}完成`);
         } catch (err) {
           failCount++;
           appendLog(taskId, `⚠️ 标注失败(已重试${MAX_RETRIES}次): ${err.message}`);
         }
 
-        await sleep(1000);
+        if (!record.is_negative) await sleep(1000);
       });
 
       appendLog(taskId, `🏷️ 标注完成: 成功 ${doneCount}/${labelTotal}, 失败 ${failCount}`);
@@ -243,9 +276,14 @@ async function startPipeline(taskId) {
     const labeledImages = db.prepare(
       "SELECT * FROM task_images WHERE task_id = ? AND status = 'labeled'"
     ).all(taskId);
+    const negativeInDataset = labeledImages.filter(r => r.is_negative).length;
 
     if (labeledImages.length < 2) {
       throw new Error(`有效标注图片不足（当前 ${labeledImages.length} 张，至少需要2张），无法训练`);
+    }
+
+    if (negativeInDataset > 0) {
+      appendLog(taskId, `📊 数据集含 ${negativeInDataset} 张负样本（空标签背景图，降低误报率）`);
     }
 
     const { yamlPath, splits } = buildDatasetStructure(
