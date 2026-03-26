@@ -98,6 +98,7 @@
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useTaskStore } from '../stores/task'
+import { getConfig } from '../api'
 
 const router = useRouter()
 const taskStore = useTaskStore()
@@ -109,12 +110,18 @@ const form = ref({
   description: '',
   classesStr: '',
   image_count: 50,
-  epochs: 50,
+  epochs: 100,
   test_split: 0.2,
 })
 
-onMounted(() => {
+onMounted(async () => {
   taskStore.fetchTasks()
+  try {
+    const config = await getConfig()
+    form.value.image_count = config.default_image_count || 50
+    form.value.epochs = config.default_epochs || 100
+    form.value.test_split = config.test_split_ratio || 0.2
+  } catch {}
 })
 
 async function handleCreate() {
@@ -133,7 +140,7 @@ async function handleCreate() {
     })
 
     showCreate.value = false
-    form.value = { name: '', description: '', classesStr: '', image_count: 50, epochs: 50, test_split: 0.2 }
+    form.value = { name: '', description: '', classesStr: '', image_count: form.value.image_count, epochs: form.value.epochs, test_split: form.value.test_split }
     router.push(`/task/${task.id}`)
   } catch (err) {
     alert('创建失败: ' + err.message)
