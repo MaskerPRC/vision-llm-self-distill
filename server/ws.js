@@ -5,7 +5,7 @@ let wss;
 function setupWebSocket(server) {
   wss = new WebSocketServer({ server, path: '/ws' });
   wss.on('connection', (ws) => {
-    ws.send(JSON.stringify({ type: 'connected', message: 'YOLO Pipeline WebSocket Connected' }));
+    ws.send(JSON.stringify({ type: 'connected', message: 'RT-DETR Pipeline WebSocket Connected' }));
   });
 }
 

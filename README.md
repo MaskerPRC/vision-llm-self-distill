@@ -1,14 +1,14 @@
-# YOLO Pipeline - 自动化 YOLO 训练流水线
+# RT-DETR Pipeline - 自动化 RT-DETR 训练流水线
 
-一站式自动化目标检测模型训练系统：**提出需求 → AI生图 → 自动标注 → YOLO训练 → 输出模型**
+一站式自动化目标检测模型训练系统：**提出需求 → AI生图 → 自动标注 → RT-DETR训练 → 输出模型**
 
 ## 架构
 
 ```
-用户需求 → LLM生成提示词 → 生图API生成图片 → 视觉LLM自动标注 → YOLO训练 → 模型输出
+用户需求 → LLM生成提示词 → 生图API生成图片 → 视觉LLM自动标注 → RT-DETR训练 → 模型输出
 ```
 
-**技术栈**: Vue 3 + Node.js (Express) + SQLite + YOLOv8 (ultralytics)
+**技术栈**: Vue 3 + Node.js (Express) + SQLite + RT-DETR (ultralytics)
 
 ## 流水线步骤
 
@@ -16,9 +16,9 @@
 |------|------|----------|
 | 1. 生成提示词 | 根据用户需求,LLM生成多样化的生图提示词 | GPT-4o / 兼容API |
 | 2. 生成图片 | 调用文生图API,批量生成训练图片 | DALL-E 3 / SD API |
-| 3. 自动标注 | 视觉LLM分析图片,输出YOLO格式标注 | GPT-4o Vision |
-| 4. 训练模型 | 自动构建数据集,调用ultralytics训练YOLOv8 | YOLOv8 |
-| 5. 评估输出 | 在验证集上测试,输出指标和模型文件 | YOLOv8 |
+| 3. 自动标注 | 视觉LLM分析图片,输出标准标注格式 | GPT-4o Vision |
+| 4. 训练模型 | 自动构建数据集,调用ultralytics训练RT-DETR | RT-DETR |
+| 5. 评估输出 | 在验证集上测试,输出指标和模型文件 | RT-DETR |
 
 ## 快速开始
 
@@ -37,7 +37,7 @@ npm install
 # 安装前端依赖
 cd client && npm install
 
-# 安装 YOLO 训练依赖
+# 安装 RT-DETR 训练依赖
 pip install ultralytics
 ```
 
@@ -54,6 +54,7 @@ cp .env.example .env
 - `VISION_API_BASE` / `VISION_API_KEY` - 用于自动标注的视觉模型
 - `IMAGE_API_BASE` / `IMAGE_API_KEY` - 文生图API
 - `PYTHON_PATH` - Python可执行文件路径
+- `RTDETR_MODEL` - RT-DETR预训练模型 (默认 `rtdetr-l.pt`)
 
 ### 启动
 
@@ -77,7 +78,7 @@ npm run dev:client  # 前端 http://localhost:5173
 ## 项目结构
 
 ```
-yolo-pipeline/
+rtdetr-pipeline/
 ├── server/                   # 后端
 │   ├── index.js              # 入口
 │   ├── db.js                 # SQLite 数据库
@@ -90,7 +91,7 @@ yolo-pipeline/
 │       ├── llm.js            # LLM 提示词生成
 │       ├── imageGen.js       # 图片生成
 │       ├── vision.js         # 视觉标注
-│       ├── yolo.js           # YOLO 训练
+│       ├── rtdetr.js         # RT-DETR 训练
 │       └── yaml.js           # YAML 工具
 ├── client/                   # 前端 Vue 3
 │   └── src/
@@ -101,7 +102,7 @@ yolo-pipeline/
 ├── data/                     # 运行时数据(自动创建)
 │   ├── images/               # 生成的图片
 │   ├── labels/               # 标注文件
-│   ├── datasets/             # YOLO数据集
+│   ├── datasets/             # 训练数据集
 │   └── models/               # 训练输出模型
 └── .env                      # 环境变量配置
 ```

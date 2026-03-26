@@ -13,7 +13,7 @@ router.get('/', (req, res) => {
     default_epochs: parseInt(process.env.DEFAULT_EPOCHS) || 50,
     test_split_ratio: parseFloat(process.env.TEST_SPLIT_RATIO) || 0.2,
     python_path: process.env.PYTHON_PATH || 'python',
-    yolo_model: process.env.YOLO_MODEL || 'yolo11n.pt',
+    rtdetr_model: process.env.RTDETR_MODEL || 'rtdetr-l.pt',
     negative_sample_ratio: parseFloat(process.env.NEGATIVE_SAMPLE_RATIO) || 0,
     augmentation: {
       mosaic: parseFloat(process.env.AUGMENT_MOSAIC) || 1.0,

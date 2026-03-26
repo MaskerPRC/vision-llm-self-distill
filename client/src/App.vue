@@ -3,9 +3,9 @@
     <header class="app-header">
       <div class="container header-inner">
         <router-link to="/" class="logo">
-          <div class="logo-icon">YP</div>
+          <div class="logo-icon">RD</div>
           <div class="logo-text">
-            <span class="logo-title">YOLO Pipeline</span>
+            <span class="logo-title">RT-DETR Pipeline</span>
             <span class="logo-subtitle">自动化训练流水线</span>
           </div>
         </router-link>

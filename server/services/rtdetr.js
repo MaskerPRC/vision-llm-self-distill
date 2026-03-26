@@ -55,13 +55,13 @@ function buildDatasetStructure(taskId, images, classes, testSplit) {
   return { yamlPath, baseDir, splits };
 }
 
-function trainYOLO(yamlPath, epochs, taskId, onLog) {
+function trainRTDETR(yamlPath, epochs, taskId, onLog) {
   return new Promise((resolve, reject) => {
     const pythonPath = process.env.PYTHON_PATH || 'python';
     const modelDir = path.join(__dirname, '..', '..', 'data', 'models', taskId);
     fs.mkdirSync(modelDir, { recursive: true });
 
-    const yoloModel = process.env.YOLO_MODEL || 'yolo11n.pt';
+    const rtdetrModel = process.env.RTDETR_MODEL || 'rtdetr-l.pt';
     const mosaic = parseFloat(process.env.AUGMENT_MOSAIC) || 1.0;
     const mixup = parseFloat(process.env.AUGMENT_MIXUP) || 0.3;
     const copyPaste = parseFloat(process.env.AUGMENT_COPY_PASTE) || 0.1;
@@ -70,15 +70,15 @@ function trainYOLO(yamlPath, epochs, taskId, onLog) {
     const script = `
 import sys, json
 from multiprocessing import freeze_support
-from ultralytics import YOLO
+from ultralytics import RTDETR
 
 def main():
-    model = YOLO('${yoloModel}')
+    model = RTDETR('${rtdetrModel}')
     model.train(
         data='${yamlPath.replace(/\\/g, '/')}',
         epochs=${epochs},
         imgsz=640,
-        batch=16,
+        batch=8,
         project='${modelDir.replace(/\\/g, '/')}',
         name='train',
         exist_ok=True,
@@ -132,7 +132,7 @@ if __name__ == '__main__':
 
     proc.on('close', (code) => {
       if (code !== 0) {
-        return reject(new Error(`YOLO训练失败 (exit code ${code}):\n${stderr}`));
+        return reject(new Error(`RT-DETR训练失败 (exit code ${code}):\n${stderr}`));
       }
 
       let metrics = null;
@@ -154,4 +154,4 @@ if __name__ == '__main__':
   });
 }
 
-module.exports = { buildDatasetStructure, trainYOLO };
+module.exports = { buildDatasetStructure, trainRTDETR };

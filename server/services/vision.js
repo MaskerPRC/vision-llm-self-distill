@@ -24,12 +24,12 @@ async function labelImage(imagePath, classes) {
 
   const classListStr = classes.map((c, i) => `${i}: ${c}`).join('\n');
 
-  const systemPrompt = `你是一个精确的目标检测标注专家。用户提供图片和类别列表，你需要输出YOLO格式的标注。
+  const systemPrompt = `你是一个精确的目标检测标注专家。用户提供图片和类别列表，你需要输出标准目标检测格式的标注。
 
 类别索引：
 ${classListStr}
 
-YOLO格式说明：每行一个目标，格式为：
+标注格式说明：每行一个目标，格式为：
 class_index center_x center_y width height
 
 其中所有坐标都是归一化到0-1范围的（相对于图片宽高）。
@@ -41,7 +41,7 @@ width, height 是边界框的宽高。
 2. 只标注属于给定类别的物体
 3. 边界框要尽量精确地包围目标
 4. 如果图中没有任何目标类别的物体，返回空内容
-5. 只输出YOLO格式的标注行，不要其他文字`;
+5. 只输出标注行，不要其他文字`;
 
   const resp = await client.post('/chat/completions', {
     model,
@@ -52,7 +52,7 @@ width, height 是边界框的宽高。
         content: [
           {
             type: 'text',
-            text: `请标注这张图片中属于以下类别的所有物体：${classes.join(', ')}\n只输出YOLO格式标注，不要任何其他文字。`,
+            text: `请标注这张图片中属于以下类别的所有物体：${classes.join(', ')}\n只输出标注格式，不要任何其他文字。`,
           },
           {
             type: 'image_url',

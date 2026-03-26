@@ -333,7 +333,7 @@ const pipelineSteps = computed(() => {
     { label: '生成提示词', active: s === 'generating_prompts', done: idx > 0 },
     { label: '生成图片', active: s === 'generating_images', done: idx > 1 },
     { label: '自动标注', active: s === 'labeling', done: idx > 2 },
-    { label: 'YOLO训练', active: s === 'training', done: idx > 3 },
+    { label: 'RT-DETR训练', active: s === 'training', done: idx > 3 },
     { label: '完成', active: s === 'completed', done: s === 'completed' },
   ]
 })

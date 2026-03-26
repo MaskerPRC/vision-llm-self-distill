@@ -6,7 +6,7 @@ const { broadcast } = require('./ws');
 const { generatePrompts, generateNegativePrompts } = require('./services/llm');
 const { generateImage } = require('./services/imageGen');
 const { labelImage } = require('./services/vision');
-const { buildDatasetStructure, trainYOLO } = require('./services/yolo');
+const { buildDatasetStructure, trainRTDETR } = require('./services/rtdetr');
 
 const CONCURRENCY_IMAGE = 5;
 const CONCURRENCY_LABEL = 2;
@@ -271,7 +271,7 @@ async function startPipeline(taskId) {
     // Step 4: 构建数据集 + 训练
     // ============================================================
     updateTask(taskId, { status: 'training', progress: 75 });
-    appendLog(taskId, '🏗️ Step 4: 构建YOLO数据集并训练...');
+    appendLog(taskId, '🏗️ Step 4: 构建RT-DETR数据集并训练...');
 
     const labeledImages = db.prepare(
       "SELECT * FROM task_images WHERE task_id = ? AND status = 'labeled'"
@@ -298,9 +298,9 @@ async function startPipeline(taskId) {
     const trainCount = splits.filter(s => s.split === 'train').length;
     const valCount = splits.filter(s => s.split === 'val').length;
     appendLog(taskId, `📂 数据集: 训练 ${trainCount} 张, 验证 ${valCount} 张`);
-    appendLog(taskId, `🏃 开始YOLO训练 (epochs: ${task.epochs})...`);
+    appendLog(taskId, `🏃 开始RT-DETR训练 (epochs: ${task.epochs})...`);
 
-    const { metrics, modelPath } = await trainYOLO(
+    const { metrics, modelPath } = await trainRTDETR(
       yamlPath, task.epochs, taskId,
       (logLine) => {
         broadcast({ type: 'task_log', taskId, message: logLine });

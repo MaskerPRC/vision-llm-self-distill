@@ -25,7 +25,7 @@ async function generatePrompts(description, classes, count) {
 5. 确保各种不同的环境和构图：室内/室外、近景/远景、不同天气/时间
 6. 每个提示词独立一行，不要编号`;
 
-  const userPrompt = `我需要训练一个YOLO模型来识别以下类别：${classes.join(', ')}
+  const userPrompt = `我需要训练一个RT-DETR目标检测模型来识别以下类别：${classes.join(', ')}
 
 需求描述：${description}
 
@@ -64,7 +64,7 @@ async function generateNegativePrompts(description, classes, count) {
 5. 可以包含一些视觉上容易与目标混淆的元素（增加训练难度）
 6. 每个提示词独立一行，不要编号`;
 
-  const userPrompt = `我正在训练一个YOLO模型来识别以下类别：${classes.join(', ')}
+  const userPrompt = `我正在训练一个RT-DETR目标检测模型来识别以下类别：${classes.join(', ')}
 
 需求描述：${description}
 

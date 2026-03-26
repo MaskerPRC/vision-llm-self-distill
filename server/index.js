@@ -51,12 +51,12 @@ app.get('*', (req, res) => {
   if (fs.existsSync(indexPath)) {
     res.sendFile(indexPath);
   } else {
-    res.json({ message: 'YOLO Pipeline API Server Running. Frontend not built yet.' });
+    res.json({ message: 'RT-DETR Pipeline API Server Running. Frontend not built yet.' });
   }
 });
 
 const server = app.listen(PORT, () => {
-  console.log(`[YOLO Pipeline] 服务器启动: http://localhost:${PORT}`);
+  console.log(`[RT-DETR Pipeline] 服务器启动: http://localhost:${PORT}`);
 });
 
 setupWebSocket(server);

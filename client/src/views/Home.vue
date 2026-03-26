@@ -1,8 +1,8 @@
 <template>
   <div class="container">
     <section class="hero">
-      <h1>YOLO 自动化训练流水线</h1>
-      <p>提出视觉识别需求 → AI生成图片 → 自动标注 → YOLO训练 → 输出模型</p>
+      <h1>RT-DETR 自动化训练流水线</h1>
+      <p>提出视觉识别需求 → AI生成图片 → 自动标注 → RT-DETR训练 → 输出模型</p>
     </section>
 
     <!-- 创建任务 -->
@@ -58,7 +58,7 @@
     <div v-else-if="taskStore.tasks.length === 0" class="empty-state">
       <div class="empty-icon">📦</div>
       <h3>暂无任务</h3>
-      <p>点击「新建任务」开始你的第一个 YOLO 训练流水线</p>
+      <p>点击「新建任务」开始你的第一个 RT-DETR 训练流水线</p>
     </div>
 
     <div class="task-grid" v-else>

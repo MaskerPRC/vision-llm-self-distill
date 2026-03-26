@@ -1,7 +1,7 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 
-const DB_PATH = path.join(__dirname, '..', 'yolo-pipeline.db');
+const DB_PATH = path.join(__dirname, '..', 'rtdetr-pipeline.db');
 let db;
 
 function getDB() {

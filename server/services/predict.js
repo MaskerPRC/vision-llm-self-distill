@@ -8,9 +8,9 @@ function predictImage(modelPath, imagePath, classes) {
 
     const script = `
 import sys, json
-from ultralytics import YOLO
+from ultralytics import RTDETR
 
-model = YOLO('${modelPath.replace(/\\/g, '/')}')
+model = RTDETR('${modelPath.replace(/\\/g, '/')}')
 results = model.predict(
     source='${imagePath.replace(/\\/g, '/')}',
     imgsz=640,
