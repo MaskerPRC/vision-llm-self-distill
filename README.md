@@ -14,9 +14,9 @@
 
 | 步骤 | 说明 | 使用的AI |
 |------|------|----------|
-| 1. 生成提示词 | 根据用户需求,LLM生成多样化的生图提示词 | GPT-4o / 兼容API |
-| 2. 生成图片 | 调用文生图API,批量生成训练图片 | DALL-E 3 / SD API |
-| 3. 自动标注 | 视觉LLM分析图片,输出标准标注格式 | GPT-4o Vision |
+| 1. 生成提示词 | 根据用户需求,LLM生成多样化的生图提示词 | Gemini 2.5 Flash (OpenRouter) |
+| 2. 生成图片 | 调用文生图API,批量生成训练图片 | fal.ai (Z-Image Turbo) |
+| 3. 自动标注 | 视觉LLM分析图片,输出标准标注格式 | Gemini 3.1 Pro (OpenRouter) |
 | 4. 训练模型 | 自动构建数据集,调用ultralytics训练RT-DETR | RT-DETR |
 | 5. 评估输出 | 在验证集上测试,输出指标和模型文件 | RT-DETR |
 
@@ -39,7 +39,7 @@ git checkout yolo
 
 - Node.js >= 18
 - Python >= 3.8 + `pip install ultralytics`
-- OpenAI API Key (或兼容API)
+- LLM API Key (Gemini 2.5 Flash) + 视觉模型 API Key (Gemini 3.1 Pro) + 生图 API Key (Z-Image Turbo)
 
 ### 安装
 
@@ -63,9 +63,9 @@ cp .env.example .env
 ```
 
 关键配置项:
-- `LLM_API_BASE` / `LLM_API_KEY` - 用于生成提示词的LLM
-- `VISION_API_BASE` / `VISION_API_KEY` - 用于自动标注的视觉模型
-- `IMAGE_API_BASE` / `IMAGE_API_KEY` - 文生图API
+- `LLM_API_BASE` / `LLM_API_KEY` / `LLM_MODEL` - 用于生成提示词的LLM (默认 Gemini 2.5 Flash via OpenRouter)
+- `VISION_API_BASE` / `VISION_API_KEY` / `VISION_MODEL` - 用于自动标注的视觉模型 (默认 Gemini 3.1 Pro via OpenRouter)
+- `FAL_API_KEY` - fal.ai 文生图API Key
 - `PYTHON_PATH` - Python可执行文件路径
 - `RTDETR_MODEL` - RT-DETR预训练模型 (默认 `rtdetr-l.pt`)
 
